@@ -17,3 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 5 new action types: git_discard, process_signal, container_destructive, package_uninstall, sql_write (FD-015)
 - Git global flag stripping (`git -C <dir>`, `--no-pager`, etc.) for correct classification (FD-015)
 - Classification data moved to JSON data files (`src/nah/data/classify/*.json`) (FD-015)
+- Decision constants (`ALLOW`, `ASK`, `BLOCK`, `CONTEXT`) and `STRICTNESS` ordering in taxonomy.py (FD-014)
+- Branded hook responses: `nah.` for block, `nah?` for ask (FD-014)
+
+### Changed
+
+- Error default changed from `allow` to `ask` — crashes no longer silently bypass security (FD-014)
+- Hook output uses Claude Code `hookSpecificOutput` protocol with required `hookEventName` field (FD-014)
+- Extracted shared helpers: `check_path_basic()`, `_check_write_content()`, `_extract_positional_host()`, `_apply_policy()`, `_unwrap_shell()`, `_merge_dict_tighten()`, `_merge_list_union()` (FD-014)
