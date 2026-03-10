@@ -992,3 +992,155 @@ class TestThreeTableLookup:
         builtin_t = get_builtin_table("minimal")
         # Global "rm" wins over minimal built-in "rm → filesystem_delete"
         assert classify_tokens(["rm", "file"], global_t, builtin_t, None) == "my_safe_rm"
+
+
+# --- FD-018: sed classifier ---
+
+
+class TestClassifySed:
+    """Flag-dependent sed classification: -i/-I → write, else → read."""
+
+    def test_bare_sed_is_read(self):
+        assert _ct(["sed", "s/a/b/", "file"]) == "filesystem_read"
+
+    def test_sed_e_is_read(self):
+        assert _ct(["sed", "-e", "s/a/b/", "file"]) == "filesystem_read"
+
+    def test_sed_n_is_read(self):
+        assert _ct(["sed", "-n", "s/a/b/p", "file"]) == "filesystem_read"
+
+    def test_sed_i_is_write(self):
+        assert _ct(["sed", "-i", "s/a/b/", "file"]) == "filesystem_write"
+
+    def test_sed_i_bak_is_write(self):
+        assert _ct(["sed", "-i.bak", "s/a/b/", "file"]) == "filesystem_write"
+
+    def test_sed_I_bsd_is_write(self):
+        assert _ct(["sed", "-I", ".bak", "s/a/b/", "file"]) == "filesystem_write"
+
+    def test_sed_ni_combined_is_write(self):
+        assert _ct(["sed", "-ni", "s/a/b/p", "file"]) == "filesystem_write"
+
+    def test_sed_nI_bsd_combined_is_write(self):
+        assert _ct(["sed", "-nI", "s/a/b/", "file"]) == "filesystem_write"
+
+    def test_sed_in_place_long_is_write(self):
+        assert _ct(["sed", "--in-place", "s/a/b/", "file"]) == "filesystem_write"
+
+    def test_sed_in_place_eq_bak_is_write(self):
+        assert _ct(["sed", "--in-place=.bak", "s/a/b/", "file"]) == "filesystem_write"
+
+    def test_sed_i_after_expr_is_write(self):
+        assert _ct(["sed", "-e", "s/a/b/", "-i", "file"]) == "filesystem_write"
+
+    def test_sed_ein_combined_is_write(self):
+        assert _ct(["sed", "-ein", "s/a/b/", "file"]) == "filesystem_write"
+
+
+# --- FD-018: tar classifier ---
+
+
+class TestClassifyTar:
+    """Flag-dependent tar classification: mode detection with write precedence."""
+
+    def test_tar_tf_is_read(self):
+        assert _ct(["tar", "tf", "a.tar"]) == "filesystem_read"
+
+    def test_tar_list_long_is_read(self):
+        assert _ct(["tar", "--list", "-f", "a.tar"]) == "filesystem_read"
+
+    def test_tar_dash_tf_is_read(self):
+        assert _ct(["tar", "-tf", "a.tar"]) == "filesystem_read"
+
+    def test_tar_cf_is_write(self):
+        assert _ct(["tar", "cf", "a.tar", "dir/"]) == "filesystem_write"
+
+    def test_tar_xf_is_write(self):
+        assert _ct(["tar", "xf", "a.tar"]) == "filesystem_write"
+
+    def test_tar_czf_is_write(self):
+        assert _ct(["tar", "czf", "a.tar.gz", "dir/"]) == "filesystem_write"
+
+    def test_tar_dash_xzf_is_write(self):
+        assert _ct(["tar", "-xzf", "a.tar.gz"]) == "filesystem_write"
+
+    def test_tar_txf_write_wins(self):
+        """Both t and x present: write takes precedence."""
+        assert _ct(["tar", "-txf", "a.tar"]) == "filesystem_write"
+
+    def test_tar_rf_append_is_write(self):
+        assert _ct(["tar", "rf", "a.tar", "newfile"]) == "filesystem_write"
+
+    def test_tar_delete_is_write(self):
+        assert _ct(["tar", "--delete", "-f", "a.tar", "member"]) == "filesystem_write"
+
+    def test_tar_extract_long_is_write(self):
+        assert _ct(["tar", "--extract", "-f", "a.tar"]) == "filesystem_write"
+
+    def test_tar_bare_conservative_default(self):
+        """No mode recognized → conservative default (write)."""
+        assert _ct(["tar"]) == "filesystem_write"
+
+    def test_tar_uf_update_is_write(self):
+        assert _ct(["tar", "uf", "a.tar", "dir/"]) == "filesystem_write"
+
+    def test_tar_filename_not_misread(self):
+        """Filename 'archive.tar' should not be parsed as mode string after a flag."""
+        assert _ct(["tar", "-f", "archive.tar"]) == "filesystem_write"
+
+
+# --- FD-018: bash builtins ---
+
+
+class TestBashBuiltins:
+    """Bash builtins classified as filesystem_read (allow)."""
+
+    @pytest.mark.parametrize("cmd", [
+        ["cd", "/tmp"],
+        ["pwd"],
+        ["type", "ls"],
+        ["which", "python"],
+        ["command", "-v", "git"],
+        ["help", "cd"],
+        ["alias"],
+        ["test", "-f", "file"],
+        ["true"],
+        ["false"],
+        ["dirs"],
+        ["pushd", "/tmp"],
+        ["popd"],
+        ["compgen", "-c", "git"],
+        ["[", "-f", "file", "]"],
+    ])
+    def test_builtin_is_read(self, cmd):
+        assert _ct(cmd) == "filesystem_read"
+
+
+# --- FD-018: system info + compute ---
+
+
+class TestSystemInfo:
+    """System info, process info, and compute-only → filesystem_read."""
+
+    @pytest.mark.parametrize("cmd", [
+        ["uname", "-a"],
+        ["hostname"],
+        ["whoami"],
+        ["uptime"],
+        ["date"],
+        ["cal"],
+        ["nproc"],
+        ["arch"],
+        ["ps", "aux"],
+        ["pgrep", "python"],
+        ["free", "-h"],
+        ["top", "-l", "1"],
+        ["htop"],
+        ["sleep", "5"],
+        ["seq", "1", "10"],
+        ["factor", "42"],
+        ["expr", "1", "+", "1"],
+        ["time", "ls"],
+    ])
+    def test_system_info_is_read(self, cmd):
+        assert _ct(cmd) == "filesystem_read"
