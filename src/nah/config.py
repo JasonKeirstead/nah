@@ -19,6 +19,7 @@ class NahConfig:
     sensitive_paths: dict[str, str] = field(default_factory=dict)
     allow_paths: dict[str, list[str]] = field(default_factory=dict)
     known_registries: list[str] = field(default_factory=list)
+    llm: dict = field(default_factory=dict)
 
 
 _cached_config: NahConfig | None = None
@@ -134,6 +135,9 @@ def _merge_configs(global_cfg: dict, project_cfg: dict) -> NahConfig:
         global_cfg.get("known_registries", []),
         project_cfg.get("known_registries", []),
     )
+
+    # llm: global config ONLY — project .nah.yaml silently ignored
+    config.llm = _validate_dict(global_cfg.get("llm", {}))
 
     return config
 
