@@ -182,3 +182,12 @@ class TestFormatError:
         result = agents.format_error("oops", "cursor")
         assert result["permission"] == "ask"
         assert "oops" in result["user_message"]
+
+
+# --- MCP matcher registration (FD-024) ---
+
+
+class TestMcpMatchers:
+    def test_mcp_matcher_registered(self):
+        assert "mcp__.*" in agents.AGENT_TOOL_MATCHERS[agents.CLAUDE]
+        assert "mcp__.*" in agents.AGENT_TOOL_MATCHERS[agents.CORTEX]

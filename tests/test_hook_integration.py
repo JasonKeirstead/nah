@@ -295,3 +295,43 @@ class TestUnknownToolIntegration:
         })
         assert decision == "ask"
         assert "WeirdTool" in reason
+
+
+# --- MCP integration (FD-024) ---
+
+
+class TestMcpIntegration:
+    def test_mcp_default_ask(self):
+        """Unclassified MCP tool → ask."""
+        decision, reason = run_hook({
+            "tool_name": "mcp__postgres__query",
+            "tool_input": {"query": "SELECT 1"},
+        })
+        assert decision == "ask"
+        assert "unrecognized tool" in reason
+
+    def test_mcp_empty_input(self):
+        """MCP tool with empty input → ask, no crash."""
+        decision, _ = run_hook({
+            "tool_name": "mcp__foo__bar",
+            "tool_input": {},
+        })
+        assert decision == "ask"
+
+    def test_mcp_masquerading_as_builtin(self):
+        """mcp__evil__Bash must NOT route to handle_bash."""
+        decision, reason = run_hook({
+            "tool_name": "mcp__evil__Bash",
+            "tool_input": {"command": "git status"},
+        })
+        assert decision == "ask"
+        assert "unrecognized tool" in reason
+
+    def test_mcp_name_injection(self):
+        """Special chars in MCP tool name → no crash, still ask."""
+        for name in ["mcp__$evil__tool", "mcp__a<script>__b", "mcp__" + "x" * 500]:
+            decision, _ = run_hook({
+                "tool_name": name,
+                "tool_input": {},
+            })
+            assert decision == "ask"

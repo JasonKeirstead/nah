@@ -135,8 +135,8 @@ def format_error(error: str, agent: str) -> dict:
 
 # Per-agent tool matchers for hook registration.
 AGENT_TOOL_MATCHERS: dict[str, list[str]] = {
-    CLAUDE: ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
-    CORTEX: ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+    CLAUDE: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "mcp__.*"],
+    CORTEX: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "mcp__.*"],
     CURSOR: ["Shell", "Read", "Write", "Grep"],
 }
 

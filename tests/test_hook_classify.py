@@ -46,3 +46,27 @@ class TestClassifyUnknownTool:
         )
         d = _classify_unknown_tool("CustomRunner")
         assert d["decision"] == "allow"  # package_run → allow
+
+    # --- FD-024 adversarial tests ---
+
+    def test_mcp_classify_prefix_collision(self):
+        """mcp__postgres in config must NOT match mcp__postgres__query."""
+        config._cached_config = NahConfig(
+            classify_global={"mcp_trusted": ["mcp__postgres"]},
+            actions={"mcp_trusted": "allow"},
+        )
+        # Exact match
+        d = _classify_unknown_tool("mcp__postgres")
+        assert d["decision"] == "allow"
+        # Different tool — no match (single-token prefix, not substring)
+        d = _classify_unknown_tool("mcp__postgres__query")
+        assert d["decision"] == "ask"
+
+    def test_mcp_classified_global_allow(self):
+        """Global config can classify and allow MCP tools."""
+        config._cached_config = NahConfig(
+            classify_global={"mcp_trusted": ["mcp__memory__search"]},
+            actions={"mcp_trusted": "allow"},
+        )
+        d = _classify_unknown_tool("mcp__memory__search")
+        assert d["decision"] == "allow"
