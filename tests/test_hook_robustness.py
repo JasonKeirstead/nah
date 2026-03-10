@@ -14,7 +14,7 @@ _SHIM_BODY = """\
 import sys, json, os, io
 
 _REAL_STDOUT = sys.stdout
-_ASK = '{{"hookSpecificOutput": {{"permissionDecision": "ask", "permissionDecisionReason": "nah: error, requesting confirmation"}}}}\\n'
+_ASK = '{{"hookSpecificOutput": {{"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": "nah: error, requesting confirmation"}}}}\\n'
 _LOG_PATH = {log_path!r}
 _LOG_MAX = 1_000_000
 

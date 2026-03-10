@@ -111,7 +111,7 @@ def _to_hook_output(decision: dict) -> dict:
     reason = decision.get("reason", decision.get("message", ""))
     # Map internal → protocol: allow→allow, ask→ask, block→deny
     perm = "deny" if d == taxonomy.BLOCK else d
-    result = {"hookSpecificOutput": {"permissionDecision": perm}}
+    result = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": perm}}
     if reason:
         result["hookSpecificOutput"]["permissionDecisionReason"] = reason
     return result
@@ -136,6 +136,7 @@ def main():
         sys.stderr.write(f"nah: error: {e}\n")
         try:
             output = {"hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
                 "permissionDecision": "ask",
                 "permissionDecisionReason": f"nah: internal error: {e}",
             }}
