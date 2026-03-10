@@ -1,6 +1,7 @@
 """PreToolUse hook entry point — reads JSON from stdin, returns decision on stdout."""
 
 import json
+import os
 import sys
 
 from nah import paths
@@ -59,17 +60,17 @@ def handle_grep(tool_input: dict) -> dict:
         if project_root:
             resolved_path = paths.resolve_path(raw_path) if raw_path else ""
             real_root = paths.resolve_path(project_root)
-            if resolved_path and not (resolved_path == real_root or resolved_path.startswith(real_root + "/")):
+            if resolved_path and not (resolved_path == real_root or resolved_path.startswith(real_root + os.sep)):
                 return {
                     "decision": "ask",
-                    "message": f"Grep: credential search pattern outside project root",
+                    "message": "Grep: credential search pattern outside project root",
                 }
         else:
             # No project root — any credential search is suspicious
             if raw_path:
                 return {
                     "decision": "ask",
-                    "message": f"Grep: credential search pattern (no project root)",
+                    "message": "Grep: credential search pattern (no project root)",
                 }
 
     return {"decision": "allow"}

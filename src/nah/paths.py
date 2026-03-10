@@ -75,7 +75,6 @@ def is_sensitive(resolved: str) -> tuple[bool, str, str]:
 def build_merged_sensitive_paths(config_paths: dict[str, str], config_default: str) -> None:
     """Merge user sensitive_paths with hardcoded lists. Modifies _SENSITIVE_DIRS in place."""
     # User config can add new sensitive paths (not remove hardcoded ones)
-    home = os.path.expanduser("~")
     existing_resolved = {entry[0] for entry in _SENSITIVE_DIRS}
     for path_str, policy in config_paths.items():
         if policy not in ("ask", "block"):
