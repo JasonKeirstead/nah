@@ -42,7 +42,7 @@ nah is a [PreToolUse hook](https://docs.anthropic.com/en/docs/claude-code/hooks)
 | **Read** | Sensitive path detection (`~/.ssh`, `~/.aws`, `.env`, ...) |
 | **Write** | Path check + content inspection before anything hits disk |
 | **Edit** | Path check + content inspection on the replacement string |
-| **Glob** | Blocks directory scanning of sensitive locations |
+| **Glob** | Guards directory scanning of sensitive locations |
 | **Grep** | Catches credential search patterns outside the project |
 
 ## How it works
@@ -50,17 +50,17 @@ nah is a [PreToolUse hook](https://docs.anthropic.com/en/docs/claude-code/hooks)
 Every tool call gets a deterministic verdict in under 5ms. Zero tokens. Zero cost.
 
 ```
-Claude: Bash → rm -rf /
-  nah. Bash: filesystem_delete — targets root (blocked)
+Claude: Edit → ~/.claude/hooks/nah_guard.py
+  nah. Edit targets hook directory: ~/.claude/hooks/ (self-modification blocked)
 
-Claude: Read → ~/.ssh/id_rsa
-  nah? Read targets sensitive path: ~/.ssh (requires confirmation)
+Claude: Read → ~/.aws/credentials
+  nah? Read targets sensitive path: ~/.aws (requires confirmation)
 
 Claude: Bash → npm test
-  ✓ allowed (package_run, inside project)
+  ✓ allowed (package_run)
 
-Claude: Write → deploy.sh containing "curl ... | bash"
-  nah? Write: suspicious content — download-and-execute pattern
+Claude: Write → config.py containing "-----BEGIN PRIVATE KEY-----"
+  nah? Write content inspection [secret]: private key
 ```
 
 **`nah.`** = blocked. **`nah?`** = asks for your confirmation. Everything else flows through silently.
@@ -71,8 +71,8 @@ The same command gets different decisions based on context:
 
 | Command | Context | Decision |
 |---------|---------|----------|
-| `rm dist/bundle.js` | Inside project, git-tracked | Allow |
-| `rm ~/.bashrc` | Outside project, sensitive | Ask |
+| `rm dist/bundle.js` | Inside project | Allow |
+| `rm ~/.bashrc` | Outside project | Ask |
 | `git push --force` | History rewrite | Ask |
 | `base64 -d \| bash` | Decode + exec pipe | Block |
 
@@ -108,7 +108,7 @@ nah classifies commands by **action type** (what kind of thing), not by command 
 nah install       # install hook into Claude Code
 nah uninstall     # clean removal
 nah update        # update hook after pip upgrade
-nah test rm -rf / # dry-run — see how nah would classify a command
+nah test "rm -rf /" # dry-run — see how nah would classify a command
 nah config show   # show effective merged config
 ```
 
@@ -133,9 +133,9 @@ Auto Mode makes Claude smarter about permissions. nah makes it impossible for th
 
 ## How it's different
 
-**vs. deny lists** ([safety-net](https://github.com/anthropics/safety-net), [dcg](https://github.com/AshDevFr/dcg)) — Pattern matching on command strings is trivially bypassed. nah resolves paths, checks git status, inspects content, guards all 6 tools, and classifies by action type instead of command name.
+**vs. deny lists** ([safety-net](https://github.com/kenryu42/claude-code-safety-net), [destructive_command_guard](https://github.com/Dicklesworthstone/destructive_command_guard)) — Pattern matching on command strings is trivially bypassed. nah resolves paths, inspects content, guards all 6 tools, and classifies by action type instead of command name.
 
-**vs. OS sandboxes** ([scode](https://github.com/nichochar/scode), [nono](https://github.com/anthropics/nono)) — Complementary layers. Sandboxes enforce at the OS level but can't distinguish safe from unsafe operations on allowed paths. nah adds the smart gate inside the OS fence. `pip install` on any machine with Python 3.
+**vs. OS sandboxes** ([nono](https://github.com/always-further/nono)) — Complementary layers. Sandboxes enforce at the OS level but can't distinguish safe from unsafe operations on allowed paths. nah adds the smart gate inside the OS fence. `pip install` on any machine with Python 3.
 
 **vs. built-in permissions** — Not configurable enough. You can't say "allow deletes inside my project but ask outside." nah adds the granularity that's missing.
 
