@@ -23,7 +23,6 @@ def _check_path(tool_name: str, raw_path: str) -> dict | None:
         return None
 
     resolved = paths.resolve_path(raw_path)
-    friendly = paths.friendly_path(resolved)
 
     # Hook self-protection (highest priority)
     if paths.is_hook_path(resolved):
