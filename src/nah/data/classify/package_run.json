@@ -13,5 +13,6 @@
   "pytest",
   "make",
   "just",
-  "task"
+  "task",
+  "nah"
 ]
