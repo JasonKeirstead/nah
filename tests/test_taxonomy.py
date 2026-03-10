@@ -661,3 +661,184 @@ class TestGitSubcommands:
     @pytest.mark.parametrize("sub", ["daemon", "http-backend"])
     def test_git_network_outbound(self, sub):
         assert classify_tokens(["git", sub]) == "network_outbound"
+
+
+class TestGhCommands:
+    """FD-017 Commit 3: gh (GitHub CLI) classification."""
+
+    # git_safe — read-only queries
+    @pytest.mark.parametrize("tokens", [
+        ["gh", "issue", "list"],
+        ["gh", "issue", "view", "123"],
+        ["gh", "issue", "status"],
+        ["gh", "pr", "list"],
+        ["gh", "pr", "view", "456"],
+        ["gh", "pr", "status"],
+        ["gh", "pr", "checks", "456"],
+        ["gh", "pr", "diff", "456"],
+        ["gh", "repo", "list"],
+        ["gh", "repo", "view"],
+        ["gh", "release", "list"],
+        ["gh", "release", "view", "v1.0"],
+        ["gh", "run", "list"],
+        ["gh", "run", "view", "123"],
+        ["gh", "workflow", "list"],
+        ["gh", "workflow", "view", "ci.yml"],
+        ["gh", "codespace", "list"],
+        ["gh", "gist", "list"],
+        ["gh", "gist", "view", "abc"],
+        ["gh", "project", "list"],
+        ["gh", "project", "view", "1"],
+        ["gh", "search", "code", "foo"],
+        ["gh", "search", "issues", "bar"],
+        ["gh", "search", "prs", "baz"],
+        ["gh", "search", "repos", "qux"],
+        ["gh", "search", "commits", "fix"],
+        ["gh", "gpg-key", "list"],
+        ["gh", "ssh-key", "list"],
+        ["gh", "secret", "list"],
+        ["gh", "variable", "list"],
+        ["gh", "variable", "get", "VAR"],
+        ["gh", "label", "list"],
+        ["gh", "ruleset", "list"],
+        ["gh", "ruleset", "view", "1"],
+        ["gh", "ruleset", "check"],
+        ["gh", "extension", "browse"],
+        ["gh", "extension", "search", "foo"],
+        ["gh", "browse"],
+        ["gh", "org", "list"],
+        ["gh", "status"],
+        ["gh", "cache", "list"],
+        ["gh", "auth", "status"],
+        ["gh", "auth", "token"],
+    ])
+    def test_gh_safe(self, tokens):
+        assert classify_tokens(tokens) == "git_safe"
+
+    # git_write — workflow mutations
+    @pytest.mark.parametrize("tokens", [
+        ["gh", "issue", "create"],
+        ["gh", "issue", "close", "123"],
+        ["gh", "issue", "comment", "123"],
+        ["gh", "issue", "edit", "123"],
+        ["gh", "issue", "reopen", "123"],
+        ["gh", "issue", "lock", "123"],
+        ["gh", "issue", "unlock", "123"],
+        ["gh", "issue", "pin", "123"],
+        ["gh", "issue", "unpin", "123"],
+        ["gh", "issue", "transfer", "123", "owner/repo"],
+        ["gh", "issue", "develop", "123"],
+        ["gh", "pr", "create"],
+        ["gh", "pr", "close", "456"],
+        ["gh", "pr", "comment", "456"],
+        ["gh", "pr", "edit", "456"],
+        ["gh", "pr", "merge", "456"],
+        ["gh", "pr", "ready", "456"],
+        ["gh", "pr", "reopen", "456"],
+        ["gh", "pr", "review", "456"],
+        ["gh", "pr", "lock", "456"],
+        ["gh", "pr", "unlock", "456"],
+        ["gh", "pr", "update-branch"],
+        ["gh", "pr", "checkout", "456"],
+        ["gh", "repo", "create", "my-repo"],
+        ["gh", "repo", "edit"],
+        ["gh", "repo", "fork"],
+        ["gh", "repo", "clone", "owner/repo"],
+        ["gh", "repo", "sync"],
+        ["gh", "release", "create", "v1.0"],
+        ["gh", "release", "edit", "v1.0"],
+        ["gh", "release", "upload", "v1.0", "file.tar.gz"],
+        ["gh", "run", "rerun", "123"],
+        ["gh", "workflow", "run", "ci.yml"],
+        ["gh", "codespace", "create"],
+        ["gh", "codespace", "ssh"],
+        ["gh", "codespace", "stop"],
+        ["gh", "gist", "create", "file.py"],
+        ["gh", "gist", "edit", "abc"],
+        ["gh", "gist", "clone", "abc"],
+        ["gh", "project", "create"],
+        ["gh", "project", "edit", "1"],
+        ["gh", "gpg-key", "add", "key.pub"],
+        ["gh", "ssh-key", "add", "key.pub"],
+        ["gh", "secret", "set", "TOKEN"],
+        ["gh", "variable", "set", "VAR"],
+        ["gh", "label", "create", "bug"],
+        ["gh", "label", "edit", "bug"],
+        ["gh", "label", "clone", "owner/repo"],
+    ])
+    def test_gh_write(self, tokens):
+        assert classify_tokens(tokens) == "git_write"
+
+    # git_history_rewrite — destructive / hard to reverse
+    @pytest.mark.parametrize("tokens", [
+        ["gh", "repo", "delete", "owner/repo"],
+        ["gh", "repo", "archive", "owner/repo"],
+        ["gh", "repo", "unarchive", "owner/repo"],
+        ["gh", "repo", "rename", "new-name"],
+        ["gh", "issue", "delete", "123"],
+        ["gh", "release", "delete", "v1.0"],
+        ["gh", "release", "delete-asset", "v1.0"],
+        ["gh", "run", "cancel", "123"],
+        ["gh", "run", "delete", "123"],
+        ["gh", "workflow", "disable", "ci.yml"],
+        ["gh", "workflow", "enable", "ci.yml"],
+        ["gh", "codespace", "delete"],
+        ["gh", "codespace", "rebuild"],
+        ["gh", "gist", "delete", "abc"],
+        ["gh", "project", "delete", "1"],
+        ["gh", "project", "field-delete", "1"],
+        ["gh", "project", "item-delete", "1"],
+        ["gh", "gpg-key", "delete", "123"],
+        ["gh", "ssh-key", "delete", "123"],
+        ["gh", "secret", "delete", "TOKEN"],
+        ["gh", "variable", "delete", "VAR"],
+        ["gh", "label", "delete", "bug"],
+        ["gh", "cache", "delete", "abc"],
+    ])
+    def test_gh_history_rewrite(self, tokens):
+        assert classify_tokens(tokens) == "git_history_rewrite"
+
+    # filesystem_read — local config reads
+    @pytest.mark.parametrize("tokens", [
+        ["gh", "config", "get", "editor"],
+        ["gh", "config", "list"],
+        ["gh", "alias", "list"],
+        ["gh", "extension", "list"],
+        ["gh", "completion"],
+        ["gh", "attestation", "trusted-root"],
+    ])
+    def test_gh_filesystem_read(self, tokens):
+        assert classify_tokens(tokens) == "filesystem_read"
+
+    # filesystem_write — local config/file writes
+    @pytest.mark.parametrize("tokens", [
+        ["gh", "config", "set", "editor", "vim"],
+        ["gh", "config", "clear-cache"],
+        ["gh", "alias", "set", "co", "pr checkout"],
+        ["gh", "alias", "delete", "co"],
+        ["gh", "alias", "import", "aliases.yml"],
+        ["gh", "extension", "create", "my-ext"],
+        ["gh", "extension", "install", "owner/ext"],
+        ["gh", "extension", "remove", "owner/ext"],
+        ["gh", "extension", "upgrade", "owner/ext"],
+        ["gh", "release", "download", "v1.0"],
+        ["gh", "run", "download", "123"],
+        ["gh", "attestation", "download"],
+        ["gh", "attestation", "verify"],
+        ["gh", "repo", "set-default"],
+        ["gh", "auth", "login"],
+        ["gh", "auth", "logout"],
+        ["gh", "auth", "refresh"],
+        ["gh", "auth", "setup-git"],
+        ["gh", "auth", "switch"],
+    ])
+    def test_gh_filesystem_write(self, tokens):
+        assert classify_tokens(tokens) == "filesystem_write"
+
+    # lang_exec — runs arbitrary code
+    @pytest.mark.parametrize("tokens", [
+        ["gh", "api", "/repos/owner/repo"],
+        ["gh", "extension", "exec", "my-ext"],
+    ])
+    def test_gh_lang_exec(self, tokens):
+        assert classify_tokens(tokens) == "lang_exec"

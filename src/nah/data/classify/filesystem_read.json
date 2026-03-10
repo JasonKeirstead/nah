@@ -18,5 +18,11 @@
   "grep",
   "rg",
   "awk",
-  "sed"
+  "sed",
+  "gh config get",
+  "gh config list",
+  "gh alias list",
+  "gh extension list",
+  "gh completion",
+  "gh attestation trusted-root"
 ]

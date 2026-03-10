@@ -4,5 +4,7 @@
   "node -e",
   "ruby -e",
   "perl -e",
-  "php -r"
+  "php -r",
+  "gh api",
+  "gh extension exec"
 ]
