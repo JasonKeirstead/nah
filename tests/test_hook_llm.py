@@ -242,3 +242,49 @@ class TestCursorAskEscalation:
         # So _resolve_ask_for_agent is never called for Claude — test the gate
         result = handle_bash({"command": "somethingunknown123"})
         assert result["decision"] == "ask"  # stays ask, not escalated
+
+
+# -- LLM max_decision cap tests --
+
+
+class TestLlmMaxDecisionCap:
+    """llm.max_decision caps LLM escalation in handle_bash."""
+
+    @patch("nah.llm.urllib.request.urlopen")
+    def test_llm_block_capped_to_ask(self, mock_urlopen, project_root):
+        """LLM returns block but max_decision=ask → result is ask with reasoning."""
+        llm_cfg = _ollama_config()
+        llm_cfg["max_decision"] = "ask"
+        _set_llm_config(llm_cfg)
+        # Also set llm_max_decision on the cached config
+        config._cached_config.llm_max_decision = "ask"
+
+        mock_urlopen.return_value = _mock_ollama_response("block", "dangerous").return_value
+
+        result = handle_bash({"command": "somethingunknown123"})
+        assert result["decision"] == "ask"
+        assert "LLM suggested block" in result.get("message", "")
+
+    @patch("nah.llm.urllib.request.urlopen")
+    def test_llm_allow_not_capped(self, mock_urlopen, project_root):
+        """LLM returns allow, max_decision=ask → still allow (allow < ask)."""
+        llm_cfg = _ollama_config()
+        llm_cfg["max_decision"] = "ask"
+        _set_llm_config(llm_cfg)
+        config._cached_config.llm_max_decision = "ask"
+
+        mock_urlopen.side_effect = _mock_ollama_response("allow", "safe").side_effect
+        mock_urlopen.return_value = _mock_ollama_response("allow", "safe").return_value
+
+        result = handle_bash({"command": "somethingunknown123"})
+        assert result["decision"] == "allow"
+
+    @patch("nah.llm.urllib.request.urlopen")
+    def test_llm_no_cap_default(self, mock_urlopen, project_root):
+        """No max_decision → LLM block passes through."""
+        _set_llm_config(_ollama_config())
+
+        mock_urlopen.return_value = _mock_ollama_response("block", "dangerous").return_value
+
+        result = handle_bash({"command": "somethingunknown123"})
+        assert result["decision"] == "block"

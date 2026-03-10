@@ -21,6 +21,7 @@ def _check_write_content(tool_name: str, tool_input: dict, content_field: str) -
             "decision": taxonomy.ASK,
             "message": format_content_message(tool_name, matches),
             "_meta": {"content_match": ", ".join(m.pattern_desc for m in matches)},
+            "_hint": "(content varies per call — cannot be remembered)",
         }
     return {"decision": taxonomy.ALLOW}
 
@@ -64,6 +65,7 @@ def handle_grep(tool_input: dict) -> dict:
                 return {
                     "decision": taxonomy.ASK,
                     "message": "Grep: credential search pattern outside project root",
+                    "_hint": "(content varies per call — cannot be remembered)",
                 }
         else:
             # No project root — any credential search is suspicious
@@ -71,6 +73,7 @@ def handle_grep(tool_input: dict) -> dict:
                 return {
                     "decision": taxonomy.ASK,
                     "message": "Grep: credential search pattern (no project root)",
+                    "_hint": "(content varies per call — cannot be remembered)",
                 }
 
     return {"decision": taxonomy.ALLOW}
@@ -167,6 +170,48 @@ def _resolve_ask_for_agent(decision: dict, tool_name: str) -> tuple[dict, str, d
     return {"decision": taxonomy.BLOCK, "reason": reason}, "ask_fallback", {}
 
 
+def _cap_llm_decision(llm_decision: dict) -> dict:
+    """Apply llm.max_decision cap. Downgrades but preserves reasoning."""
+    try:
+        from nah.config import get_config
+        cap = get_config().llm_max_decision
+    except Exception:
+        return llm_decision
+    if not cap:
+        return llm_decision
+    decision = llm_decision.get("decision", taxonomy.ASK)
+    if taxonomy.STRICTNESS.get(decision, 2) > taxonomy.STRICTNESS.get(cap, 3):
+        original_reason = llm_decision.get("reason", llm_decision.get("message", ""))
+        llm_decision["decision"] = cap
+        llm_decision["message"] = f"LLM suggested {decision}: {original_reason}"
+    return llm_decision
+
+
+def _build_bash_hint(result) -> str | None:
+    """Build an actionable hint for bash ask decisions."""
+    if result.composition_rule:
+        return None
+    for sr in result.stages:
+        if sr.decision != taxonomy.ASK:
+            continue
+        if sr.action_type == taxonomy.UNKNOWN:
+            cmd = sr.tokens[0] if sr.tokens else "command"
+            return f"To classify: nah classify {cmd} <type>\n     See available types: nah types"
+        if "unknown host: " in sr.reason:
+            # Extract host from reason like "network_outbound → ask (unknown host: example.com)"
+            idx = sr.reason.index("unknown host: ") + len("unknown host: ")
+            host = sr.reason[idx:].rstrip(")")
+            return f"To trust this host: nah trust {host}"
+        if "targets sensitive path:" in sr.reason:
+            # Extract path from reason like "targets sensitive path: ~/.aws"
+            idx = sr.reason.index("targets sensitive path:") + len("targets sensitive path: ")
+            path = sr.reason[idx:].strip()
+            return f"To always allow: nah allow-path {path}"
+        # Action policy ask
+        return f"To always allow: nah allow {sr.action_type}"
+    return None
+
+
 def _classify_meta(result) -> dict:
     """Build classification metadata from ClassifyResult."""
     meta = {
@@ -194,13 +239,22 @@ def handle_bash(tool_input: dict) -> dict:
         return {"decision": taxonomy.BLOCK, "reason": _format_bash_reason(result), "_meta": meta}
 
     if result.final_decision == taxonomy.ASK:
+        hint = _build_bash_hint(result)
+        if hint:
+            meta["hint"] = hint
+
         if _is_llm_eligible(result):
             llm_decision, llm_meta = _try_llm(result)
             meta.update(llm_meta)
             if llm_decision is not None:
+                llm_decision = _cap_llm_decision(llm_decision)
                 llm_decision["_meta"] = meta
                 return llm_decision
-        return {"decision": taxonomy.ASK, "message": _format_bash_reason(result), "_meta": meta}
+
+        decision = {"decision": taxonomy.ASK, "message": _format_bash_reason(result), "_meta": meta}
+        if hint:
+            decision["_hint"] = hint
+        return decision
 
     return {"decision": taxonomy.ALLOW, "_meta": meta}
 
@@ -222,6 +276,9 @@ def _to_hook_output(decision: dict, agent: str) -> dict:
     if d == taxonomy.BLOCK:
         return agents.format_block(reason, agent)
     if d == taxonomy.ASK:
+        hint = decision.get("_hint")
+        if hint:
+            reason = f"{reason}\n     {hint}"
         return agents.format_ask(reason, agent)
     return agents.format_allow(agent)
 

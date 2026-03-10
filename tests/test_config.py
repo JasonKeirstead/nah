@@ -259,3 +259,19 @@ class TestProfile:
         """Global profile wins; project profile ignored."""
         cfg = _merge_configs({"profile": "minimal"}, {"profile": "none"})
         assert cfg.profile == "minimal"
+
+
+class TestLlmMaxDecision:
+    """llm.max_decision config loading."""
+
+    def test_llm_max_decision_from_global(self):
+        cfg = _merge_configs({"llm": {"max_decision": "ask"}}, {})
+        assert cfg.llm_max_decision == "ask"
+
+    def test_llm_max_decision_invalid_ignored(self):
+        cfg = _merge_configs({"llm": {"max_decision": "turbo"}}, {})
+        assert cfg.llm_max_decision == ""
+
+    def test_llm_max_decision_default_empty(self):
+        cfg = _merge_configs({}, {})
+        assert cfg.llm_max_decision == ""

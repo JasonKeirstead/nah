@@ -22,6 +22,7 @@ class NahConfig:
     allow_paths: dict[str, list[str]] = field(default_factory=dict)
     known_registries: list[str] = field(default_factory=list)
     llm: dict = field(default_factory=dict)
+    llm_max_decision: str = ""  # empty = no cap
     ask_fallback: str = "deny"
     log: dict = field(default_factory=dict)
 
@@ -147,6 +148,11 @@ def _merge_configs(global_cfg: dict, project_cfg: dict) -> NahConfig:
 
     # llm: global config ONLY — project .nah.yaml silently ignored
     config.llm = _validate_dict(global_cfg.get("llm", {}))
+
+    # llm.max_decision: cap on LLM escalation (global only)
+    raw_max = config.llm.get("max_decision", "")
+    if raw_max and raw_max in _STRICTNESS:
+        config.llm_max_decision = raw_max
 
     # ask_fallback: global config ONLY
     raw_fallback = global_cfg.get("ask_fallback", "deny")
