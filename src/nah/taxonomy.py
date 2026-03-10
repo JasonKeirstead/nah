@@ -99,6 +99,9 @@ def classify_tokens(tokens: list[str], classify_table: list | None = None) -> st
     # Strip git global flags so `git -C /dir rm` classifies as `git rm`.
     if tokens[0] == "git":
         tokens = _strip_git_global_flags(tokens)
+        action = _classify_git(tokens)
+        if action is not None:
+            return action
 
     table = classify_table if classify_table is not None else _CLASSIFY_TABLE
 
@@ -146,6 +149,90 @@ def _classify_find(tokens: list[str]) -> str | None:
         if tok in ("-delete", "-exec", "-execdir", "-ok"):
             return FILESYSTEM_DELETE
     return FILESYSTEM_READ
+
+
+def _classify_git(tokens: list[str]) -> str | None:
+    """Flag-dependent classification for 12 git subcommands.
+
+    Returns action type or None (fall through to prefix matching).
+    Called after _strip_git_global_flags(), so tokens are clean.
+    """
+    if len(tokens) < 2 or tokens[0] != "git":
+        return None
+
+    sub = tokens[1]
+    args = tokens[2:]
+
+    if sub == "tag":
+        return GIT_SAFE if not args else GIT_WRITE
+
+    if sub == "branch":
+        if not args:
+            return GIT_SAFE
+        for a in args:
+            if a in ("-a", "-r", "--list", "-v", "-vv"):
+                return GIT_SAFE
+            if a == "-d":
+                return GIT_DISCARD
+            if a == "-D":
+                return GIT_HISTORY_REWRITE
+        return GIT_WRITE
+
+    if sub == "config":
+        for a in args:
+            if a in ("--get", "--list", "--get-all", "--get-regexp"):
+                return GIT_SAFE
+            if a in ("--unset", "--unset-all", "--replace-all"):
+                return GIT_WRITE
+        # Count non-flag args: 0-1 = read (get), 2+ = write (set)
+        non_flag = [a for a in args if not a.startswith("-")]
+        return GIT_SAFE if len(non_flag) <= 1 else GIT_WRITE
+
+    if sub == "reset":
+        return GIT_DISCARD if "--hard" in args else GIT_WRITE
+
+    if sub == "push":
+        _FORCE_FLAGS = {"--force", "-f", "--force-with-lease", "--force-if-includes"}
+        for a in args:
+            if a in _FORCE_FLAGS:
+                return GIT_HISTORY_REWRITE
+            # +refspec means force push
+            if a.startswith("+") and len(a) > 1:
+                return GIT_HISTORY_REWRITE
+        return GIT_WRITE
+
+    if sub == "add":
+        return GIT_SAFE if ("--dry-run" in args or "-n" in args) else GIT_WRITE
+
+    if sub == "rm":
+        return GIT_WRITE if "--cached" in args else GIT_DISCARD
+
+    if sub == "clean":
+        return GIT_SAFE if ("--dry-run" in args or "-n" in args) else GIT_HISTORY_REWRITE
+
+    if sub == "reflog":
+        if args and args[0] in ("delete", "expire"):
+            return GIT_DISCARD
+        return GIT_SAFE
+
+    if sub == "checkout":
+        _DISCARD = {".", "--", "HEAD", "--force", "-f", "--ours", "--theirs", "-B"}
+        for a in args:
+            if a in _DISCARD:
+                return GIT_DISCARD
+        return GIT_WRITE
+
+    if sub == "switch":
+        _DISCARD = {"--discard-changes", "--force", "-f"}
+        for a in args:
+            if a in _DISCARD:
+                return GIT_DISCARD
+        return GIT_WRITE
+
+    if sub == "restore":
+        return GIT_WRITE if "--staged" in args else GIT_DISCARD
+
+    return None
 
 
 def get_policy(action_type: str, user_actions: dict[str, str] | None = None) -> str:

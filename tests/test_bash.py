@@ -285,3 +285,82 @@ class TestNewActionTypes:
         r = classify_command("git checkout main")
         assert r.final_decision == "allow"
         assert r.stages[0].action_type == "git_write"
+
+
+class TestFD017Regressions:
+    """FD-017: Integration tests for flag-dependent git classification bug fixes."""
+
+    def test_branch_create_is_write(self, project_root):
+        r = classify_command("git branch newfeature")
+        assert r.final_decision == "allow"
+        assert r.stages[0].action_type == "git_write"
+
+    def test_tag_create_is_write(self, project_root):
+        r = classify_command("git tag v1.0")
+        assert r.final_decision == "allow"
+        assert r.stages[0].action_type == "git_write"
+
+    def test_reset_soft_is_write(self, project_root):
+        r = classify_command("git reset --soft HEAD~1")
+        assert r.final_decision == "allow"
+        assert r.stages[0].action_type == "git_write"
+
+    def test_reset_hard_is_discard(self, project_root):
+        r = classify_command("git reset --hard")
+        assert r.final_decision == "ask"
+        assert r.stages[0].action_type == "git_discard"
+
+    def test_clean_dry_run_is_safe(self, project_root):
+        r = classify_command("git clean --dry-run")
+        assert r.final_decision == "allow"
+        assert r.stages[0].action_type == "git_safe"
+
+    def test_rm_cached_is_write(self, project_root):
+        r = classify_command("git rm --cached file.txt")
+        assert r.final_decision == "allow"
+        assert r.stages[0].action_type == "git_write"
+
+    def test_add_dry_run_is_safe(self, project_root):
+        r = classify_command("git add --dry-run .")
+        assert r.final_decision == "allow"
+        assert r.stages[0].action_type == "git_safe"
+
+    def test_push_force_with_lease_is_history(self, project_root):
+        r = classify_command("git push --force-with-lease")
+        assert r.final_decision == "ask"
+        assert r.stages[0].action_type == "git_history_rewrite"
+
+    def test_push_force_if_includes_is_history(self, project_root):
+        r = classify_command("git push --force-if-includes")
+        assert r.final_decision == "ask"
+        assert r.stages[0].action_type == "git_history_rewrite"
+
+    def test_push_plus_refspec_is_history(self, project_root):
+        r = classify_command("git push origin +main")
+        assert r.final_decision == "ask"
+        assert r.stages[0].action_type == "git_history_rewrite"
+
+    def test_reflog_is_safe(self, project_root):
+        r = classify_command("git reflog")
+        assert r.final_decision == "allow"
+        assert r.stages[0].action_type == "git_safe"
+
+    def test_reflog_delete_is_discard(self, project_root):
+        r = classify_command("git reflog delete")
+        assert r.final_decision == "ask"
+        assert r.stages[0].action_type == "git_discard"
+
+    def test_branch_d_is_discard(self, project_root):
+        r = classify_command("git branch -d old")
+        assert r.final_decision == "ask"
+        assert r.stages[0].action_type == "git_discard"
+
+    def test_restore_staged_is_write(self, project_root):
+        r = classify_command("git restore --staged file.txt")
+        assert r.final_decision == "allow"
+        assert r.stages[0].action_type == "git_write"
+
+    def test_config_read_key_is_safe(self, project_root):
+        r = classify_command("git config user.name")
+        assert r.final_decision == "allow"
+        assert r.stages[0].action_type == "git_safe"
