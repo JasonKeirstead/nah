@@ -1,7 +1,5 @@
 """Unit tests for database context resolution — FD-042."""
 
-import pytest
-
 from nah import config
 from nah.config import NahConfig
 from nah.context import (
@@ -166,14 +164,8 @@ class TestResolveDatabaseContext:
         assert "unknown database target" in reason
 
     def test_case_normalization(self):
-        """Lowercase input matches uppercase target."""
+        """Lowercase input matches uppercase target (schema-less input matches schema entry)."""
         decision, reason = resolve_database_context(["psql", "-d", "sales"], None)
-        # SALES matches but schema is None, and target has schema=DEV
-        # database-only entry is SANDBOX, so SALES without DEV schema doesn't match SANDBOX
-        # SALES with schema DEV entry: schema is None (not DEV) so it still matches
-        # because entry schema "DEV" vs input schema None — let's check the logic
-        # Actually _matches_db_targets: entry has schema "DEV", input schema is None
-        # The condition: if schema is None or entry_schema == schema → True if schema is None
         assert decision == "allow"
 
     def test_no_db_targets_configured(self):
