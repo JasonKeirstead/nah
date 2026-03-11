@@ -606,6 +606,22 @@ class TestTryLlmWithTranscript:
         assert "Recent conversation" not in captured[0]["prompt"]
 
     @patch("nah.llm.urllib.request.urlopen")
+    def test_prompt_stored_in_result(self, mock_urlopen, tmp_path):
+        """Verify result.prompt contains the command and transcript context."""
+        f = tmp_path / "t.jsonl"
+        f.write_text(_jsonl(_user_msg("deploy to prod")))
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({
+            "response": '{"decision": "allow", "reasoning": "ok"}'
+        }).encode()
+        mock_urlopen.return_value = mock_resp
+
+        result = try_llm(self._make_result(), self._ollama_config(), str(f))
+        assert "foobar" in result.prompt
+        assert "deploy to prod" in result.prompt
+
+    @patch("nah.llm.urllib.request.urlopen")
     def test_context_chars_zero_no_context(self, mock_urlopen, tmp_path):
         """context_chars: 0 disables transcript reading."""
         f = tmp_path / "t.jsonl"

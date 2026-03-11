@@ -35,6 +35,7 @@ class LLMCallResult:
     model: str = ""
     latency_ms: int = 0
     reasoning: str = ""
+    prompt: str = ""
     cascade: list[ProviderAttempt] = field(default_factory=list)
 
 
@@ -507,7 +508,9 @@ def try_llm(classify_result, llm_config: dict, transcript_path: str = "") -> LLM
     transcript_text = _read_transcript_tail(transcript_path, context_chars)
     transcript_context = _format_transcript_context(transcript_text)
     prompt = _build_prompt(classify_result, transcript_context)
-    return _try_providers(prompt, llm_config, "Bash")
+    result = _try_providers(prompt, llm_config, "Bash")
+    result.prompt = prompt
+    return result
 
 
 _GENERIC_PROMPT = """\
@@ -551,4 +554,6 @@ def try_llm_generic(tool_name: str, reason: str, llm_config: dict,
     transcript_context = _format_transcript_context(transcript_text)
     if transcript_context:
         prompt += transcript_context
-    return _try_providers(prompt, llm_config, tool_name)
+    result = _try_providers(prompt, llm_config, tool_name)
+    result.prompt = prompt
+    return result

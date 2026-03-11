@@ -126,6 +126,11 @@ def _try_llm(classify_result) -> tuple[dict | None, dict]:
                     for a in llm_call.cascade
                 ],
             }
+        try:
+            if cfg.log and cfg.log.get("llm_prompt", False):
+                llm_meta["llm_prompt"] = llm_call.prompt
+        except Exception:
+            pass
         return llm_call.decision, llm_meta
     except ImportError:
         return None, {}
@@ -160,6 +165,11 @@ def _resolve_ask_for_agent(decision: dict, tool_name: str) -> tuple[dict, str, d
                         for a in llm_call.cascade
                     ],
                 }
+            try:
+                if cfg.log and cfg.log.get("llm_prompt", False):
+                    llm_meta["llm_prompt"] = llm_call.prompt
+            except Exception:
+                pass
             if llm_call.decision is not None:
                 return llm_call.decision, "llm", llm_meta
         except ImportError:

@@ -391,3 +391,45 @@ class TestTranscriptPassthrough:
 
         handle_bash({"command": "somethingunknown123"})
         assert "Recent conversation" not in captured[0]["prompt"]
+
+    @patch("nah.llm.urllib.request.urlopen")
+    def test_llm_prompt_logged_when_enabled(self, mock_urlopen, project_root, tmp_path):
+        """log.llm_prompt: true → llm_prompt appears in llm_meta."""
+        llm_cfg = _ollama_config()
+        config._cached_config = NahConfig(llm=llm_cfg, log={"llm_prompt": True})
+
+        f = tmp_path / "t.jsonl"
+        f.write_text(json.dumps(_user_msg("build project")) + "\n")
+        hook._transcript_path = str(f)
+
+        captured = []
+
+        def capture(req, **kw):
+            captured.append(json.loads(req.data.decode()))
+            resp = MagicMock()
+            resp.read.return_value = json.dumps({
+                "response": '{"decision": "allow", "reasoning": "safe"}'
+            }).encode()
+            return resp
+
+        mock_urlopen.side_effect = capture
+
+        result = handle_bash({"command": "somethingunknown123"})
+        assert result["decision"] == "allow"
+        # Verify llm_prompt is in _meta
+        meta = result.get("_meta", {})
+        assert "llm_prompt" in meta
+        assert "somethingunknown123" in meta["llm_prompt"]
+
+    @patch("nah.llm.urllib.request.urlopen")
+    def test_llm_prompt_not_logged_by_default(self, mock_urlopen, project_root):
+        """Default config → llm_prompt not in llm_meta."""
+        _set_llm_config(_ollama_config())
+        hook._transcript_path = ""
+
+        mock_urlopen.return_value = _mock_ollama_response("allow", "safe").return_value
+
+        result = handle_bash({"command": "somethingunknown123"})
+        assert result["decision"] == "allow"
+        meta = result.get("_meta", {})
+        assert "llm_prompt" not in meta
