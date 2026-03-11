@@ -20,7 +20,7 @@
 
 ## The problem
 
-`rm -rf __pycache__` to clean up? Fine — it's inside your project.<br>
+`rm -rf __pycache__` to clean up? Fine — routine cleanup.<br>
 `rm ~/.bashrc`? nah.
 
 `git push`? Sure.<br>
