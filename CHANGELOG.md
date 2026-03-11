@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Flag-dependent classifiers for `sed` (-i/-I → write, else read) and `tar` (mode detection with write precedence) (FD-018)
 - ~80 new filesystem_read entries: bash builtins (cd, pwd, type, test), system info (uname, hostname, ps), text processing (sort, cut, uniq, tr), file info (basename, dirname, checksums), binary inspection, compressed reading, and harmless wrappers (FD-018)
 - JSONL decision log (`~/.config/nah/nah.log`) with content redaction, verbosity filtering, 5MB rotation, and `nah log` CLI with `--blocks`/`--tool` filters (FD-008)
+- LLM layer for ambiguous ask decisions — Ollama, OpenAI, Anthropic, OpenRouter backends with automatic fallthrough, three-way decision (allow/block/uncertain), eligibility filtering (FD-007)
+- LLM conversation context — reads Claude Code transcript tail (JSONL) to give the LLM decider intent context, `context_chars` config knob, anti-injection framing (FD-035)
 - OpenAI and Anthropic LLM backends for ambiguous command resolution — OpenAI via Responses API, Anthropic via Messages API (FD-030)
 - BrokenPipeError-safe shim with stdout buffering and crash recovery (FD-011)
 - Debug crash log at `~/.config/nah/hook-errors.log` with 1MB rotation (FD-011)
@@ -31,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Unknown/unhandled tools now default to ask instead of silent allow — added `write_to_file → Write` TOOL_MAP entry for Cursor (FD-037)
 - Unknown tool policy (`actions.unknown`) in user config is now respected — previously hardcoded to `ask` regardless of config (FD-045)
 - `nah config show` no longer crashes — updated to use renamed `classify_global`/`classify_project` fields and display `profile`, `llm_max_decision`, `ask_fallback` (FD-044)
 - Sensitive path config overrides now applied — `build_merged_sensitive_paths()` wired into path checking via lazy `_ensure_sensitive_paths_merged()`, existing entries can be overridden (FD-025)
