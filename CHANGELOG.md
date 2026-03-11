@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Shared context dispatch — `resolve_context()` in context.py routes by action type for both Bash and MCP tool paths. MCP tools classified as `db_write` with `context` policy now get context resolution via `tool_input` inspection, enabling auto-allow for matching `db_targets` (e.g., Snowflake MCP). (FD-055)
 - Configurable content patterns — `content_patterns` config with suppress by description, custom pattern addition with regex validation, per-category policies (ask/block). `credential_patterns` config for Grep credential search (suppress/add by regex string). Policies tighten-only from project config, `profile: none` clears all built-in patterns. (FD-052)
 - Write/Edit tools now enforce project boundary check — paths outside the project root trigger ask (was Bash-only). New `trusted_paths` global config as targeted escape hatch, `nah trust` polymorphic (detects path vs host). `profile: none` now clears `_SENSITIVE_DIRS` (was missing). (FD-054)
 
