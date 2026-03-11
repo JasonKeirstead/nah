@@ -23,8 +23,12 @@ def _check_write_content(tool_name: str, tool_input: dict, content_field: str) -
     content = tool_input.get(content_field, "")
     matches = scan_content(content)
     if matches:
+        decision = max(
+            (m.policy for m in matches),
+            key=lambda p: taxonomy.STRICTNESS.get(p, 2),
+        )
         return {
-            "decision": taxonomy.ASK,
+            "decision": decision,
             "reason": format_content_message(tool_name, matches),
             "_meta": {"content_match": ", ".join(m.pattern_desc for m in matches)},
             "_hint": "(content varies per call — cannot be remembered)",
@@ -366,7 +370,8 @@ def _classify_unknown_tool(canonical: str, tool_input: dict | None = None) -> di
     except Exception:
         return {"decision": taxonomy.ASK, "reason": f"unrecognized tool: {canonical}"}
 
-    action_type = taxonomy.classify_tokens([canonical], global_table, builtin_table, project_table)
+    action_type = taxonomy.classify_tokens([canonical], global_table, builtin_table, project_table,
+                                           profile=cfg.profile)
 
     policy = taxonomy.get_policy(action_type, user_actions)
     if policy == taxonomy.ALLOW:
