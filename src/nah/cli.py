@@ -73,7 +73,6 @@ try:
             _log_error(tool_name, ValueError(f"invalid JSON from main: {{output[:200]}}"))
             _safe_write(_ASK)
 except SystemExit as e:
-    # Pass through exit code (Kiro uses exit 2 for blocks).
     sys.stdout = _REAL_STDOUT
     os._exit(e.code if e.code is not None else 0)
 except BaseException as e:
@@ -115,14 +114,10 @@ def _write_settings(settings_file: Path, data: dict) -> None:
 
 
 def _is_nah_hook(hook_entry: dict) -> bool:
-    """Check if a hook entry belongs to nah (supports both config formats)."""
-    # Claude/Cortex format: nested hooks array
+    """Check if a hook entry belongs to nah."""
     for hook in hook_entry.get("hooks", []):
         if "nah_guard.py" in hook.get("command", ""):
             return True
-    # Cursor format: flat command field
-    if "nah_guard.py" in hook_entry.get("command", ""):
-        return True
     return False
 
 
@@ -160,15 +155,7 @@ def _write_hook_script() -> None:
 
 
 def _install_for_agent(agent_key: str) -> None:
-    """Patch a single agent's config with nah hook entries."""
-    if agent_key in agents.CURSOR_FORMAT_AGENTS:
-        _install_cursor_format(agent_key)
-    else:
-        _install_claude_format(agent_key)
-
-
-def _install_claude_format(agent_key: str) -> None:
-    """Install into Claude/Cortex settings.json (nested hooks format)."""
+    """Patch a single agent's settings.json with nah hook entries."""
     settings_file = agents.AGENT_SETTINGS[agent_key]
     tool_names = agents.AGENT_TOOL_MATCHERS[agent_key]
     agent_name = agents.AGENT_NAMES[agent_key]
@@ -199,43 +186,6 @@ def _install_claude_format(agent_key: str) -> None:
 
     print(f"  {agent_name}:")
     print(f"    Settings:  {settings_file} ({len(tool_names)} PreToolUse matchers)")
-    if backup.exists():
-        print(f"    Backup:    {backup}")
-
-
-def _install_cursor_format(agent_key: str) -> None:
-    """Install into Cursor hooks.json (flat {command, matcher} format)."""
-    settings_file = agents.AGENT_SETTINGS[agent_key]
-    tool_names = agents.AGENT_TOOL_MATCHERS[agent_key]
-    agent_name = agents.AGENT_NAMES[agent_key]
-
-    settings = _read_settings(settings_file)
-    settings.setdefault("version", 1)
-    hooks = settings.setdefault("hooks", {})
-    pre_tool_use = hooks.setdefault("preToolUse", [])  # camelCase for Cursor
-
-    command = _hook_command()
-
-    for tool_name in tool_names:
-        existing = None
-        for entry in pre_tool_use:
-            if entry.get("matcher") == tool_name and _is_nah_hook(entry):
-                existing = entry
-                break
-
-        if existing is not None:
-            existing["command"] = command
-        else:
-            pre_tool_use.append({
-                "matcher": tool_name,
-                "command": command,
-            })
-
-    _write_settings(settings_file, settings)
-    backup = settings_file.with_suffix(".json.bak")
-
-    print(f"  {agent_name}:")
-    print(f"    Hooks:     {settings_file} ({len(tool_names)} preToolUse matchers)")
     if backup.exists():
         print(f"    Backup:    {backup}")
 
@@ -272,16 +222,11 @@ def cmd_update(args: argparse.Namespace) -> None:
         if settings_file.exists():
             settings = _read_settings(settings_file)
             hooks = settings.get("hooks", {})
-            # Cursor uses camelCase "preToolUse", Claude uses PascalCase "PreToolUse"
-            hook_key = "preToolUse" if key in agents.CURSOR_FORMAT_AGENTS else "PreToolUse"
-            pre_tool_use = hooks.get(hook_key, [])
+            pre_tool_use = hooks.get("PreToolUse", [])
             updated = 0
             for entry in pre_tool_use:
                 if _is_nah_hook(entry):
-                    if key in agents.CURSOR_FORMAT_AGENTS:
-                        entry["command"] = command
-                    else:
-                        entry["hooks"] = [{"type": "command", "command": command}]
+                    entry["hooks"] = [{"type": "command", "command": command}]
                     updated += 1
             if updated:
                 _write_settings(settings_file, settings)
@@ -309,7 +254,6 @@ def cmd_config(args: argparse.Namespace) -> None:
         print(f"  known_registries:      {cfg.known_registries or '[]'}")
         print(f"  llm:                   {cfg.llm or '{}'}")
         print(f"  llm_max_decision:      {cfg.llm_max_decision}")
-        print(f"  ask_fallback:          {cfg.ask_fallback}")
     elif sub == "path":
         from nah.config import get_global_config_path, get_project_config_path
         print(f"Global:  {get_global_config_path()}")
@@ -405,8 +349,7 @@ def cmd_uninstall(args: argparse.Namespace) -> None:
         if settings_file.exists():
             settings = _read_settings(settings_file)
             hooks = settings.get("hooks", {})
-            hook_key = "preToolUse" if key in agents.CURSOR_FORMAT_AGENTS else "PreToolUse"
-            pre_tool_use = hooks.get(hook_key, [])
+            pre_tool_use = hooks.get("PreToolUse", [])
 
             filtered = [entry for entry in pre_tool_use if not _is_nah_hook(entry)]
 
@@ -429,8 +372,7 @@ def cmd_uninstall(args: argparse.Namespace) -> None:
         if sf.exists():
             try:
                 data = _read_settings(sf)
-                hk = "preToolUse" if key in agents.CURSOR_FORMAT_AGENTS else "PreToolUse"
-                for entry in data.get("hooks", {}).get(hk, []):
+                for entry in data.get("hooks", {}).get("PreToolUse", []):
                     if _is_nah_hook(entry):
                         any_remaining = True
                         break
