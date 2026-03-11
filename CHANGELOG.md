@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Database context resolution for `db_write` operations — CLI flag extraction for psql, snowsql, snow-sql, MCP `tool_input` field extraction, `db_targets` config (global only) with wildcard and case-normalized matching, user opt-in via `actions: { db_write: context }` (FD-042)
 - PreToolUse hook skeleton with 6 tool handlers (Bash, Read, Write, Edit, Glob, Grep), sensitive path protection, hook self-protection, install/uninstall CLI (FD-004)
 - Bash command classification with action taxonomy, pipe composition rules, shell unwrapping, context resolution for filesystem and network actions (FD-005)
 - Content inspection for Write/Edit (destructive commands, exfiltration, obfuscation, secrets) and Grep credential search detection (FD-006)
