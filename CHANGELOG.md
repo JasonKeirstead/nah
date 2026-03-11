@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Configurable safety lists — four hardcoded lists (`known_hosts`, `exec_sinks`, `sensitive_basenames`, `decode_commands`) now extensible via global config with add/remove support. Polymorphic parsing (list=add-only, dict=add/remove), `profile: none` clears all lists, stderr warnings for dangerous removes. New hardcoded defaults: bun, deno, fish, pwsh (exec sinks), .env.local, .env.production, .npmrc, .pypirc (sensitive basenames), uudecode (decode commands). `known_registries` tightened to global-only. (FD-051)
 - Database context resolution for `db_write` operations — CLI flag extraction for psql, snowsql, snow-sql, MCP `tool_input` field extraction, `db_targets` config (global only) with wildcard and case-normalized matching, user opt-in via `actions: { db_write: context }` (FD-042)
 - PreToolUse hook skeleton with 6 tool handlers (Bash, Read, Write, Edit, Glob, Grep), sensitive path protection, hook self-protection, install/uninstall CLI (FD-004)
 - Bash command classification with action taxonomy, pipe composition rules, shell unwrapping, context resolution for filesystem and network actions (FD-005)
@@ -70,4 +71,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - LLM config key renamed from `backends:` to `providers:` — old key accepted as deprecated alias for one version cycle. Log fields `llm_backend` → `llm_provider`, cascade entries `backend` → `provider` (FD-036)
 - Error default changed from `allow` to `ask` — crashes no longer silently bypass security (FD-014)
 - Hook output uses Claude Code `hookSpecificOutput` protocol with required `hookEventName` field (FD-014)
-- Extracted shared helpers: `check_path_basic()`, `_check_write_content()`, `_extract_positional_host()`, `_apply_policy()`, `_unwrap_shell()`, `_merge_dict_tighten()`, `_merge_list_union()` (FD-014)
+- Extracted shared helpers: `check_path_basic()`, `_check_write_content()`, `_extract_positional_host()`, `_apply_policy()`, `_unwrap_shell()`, `_merge_dict_tighten()`, `_parse_add_remove()` (FD-014)
