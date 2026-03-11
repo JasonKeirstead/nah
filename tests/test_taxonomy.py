@@ -238,18 +238,37 @@ class TestClassifyTokens:
     def test_package_uninstall(self, tokens):
         assert _ct(tokens) == "package_uninstall"
 
-    # sql_write
+    # db_write
     @pytest.mark.parametrize("tokens", [
-        ["snow", "sql", "-q", "SELECT 1"],
-        ["snowsql", "-q", "SELECT 1"],
+        ["psql"],
         ["psql", "-c", "SELECT 1"],
         ["psql", "-f", "script.sql"],
+        ["psql", "--command", "SELECT 1"],
+        ["psql", "--file", "script.sql"],
+        ["mysql"],
         ["mysql", "-e", "SHOW TABLES"],
+        ["mysql", "--execute", "SHOW TABLES"],
         ["sqlite3", "db.sqlite", "SELECT 1"],
-        ["bq", "query", "--use_legacy_sql=false", "SELECT 1"],
+        ["snow", "sql", "-q", "SELECT 1"],
+        ["snow", "sql", "-f", "file.sql"],
+        ["snow", "sql", "--query", "SELECT 1"],
+        ["snow", "sql", "--filename", "file.sql"],
+        ["snowsql", "-q", "SELECT 1"],
+        ["snowsql", "-f", "file.sql"],
+        ["snowsql", "--query", "SELECT 1"],
+        ["pg_restore", "dump.sql"],
     ])
-    def test_sql_write(self, tokens):
-        assert _ct(tokens) == "sql_write"
+    def test_db_write(self, tokens):
+        assert _ct(tokens) == "db_write"
+
+    # db companion tools → filesystem_write
+    @pytest.mark.parametrize("tokens", [
+        ["pg_dump", "mydb"],
+        ["pg_dumpall"],
+        ["mysqldump", "mydb"],
+    ])
+    def test_db_companion_filesystem_write(self, tokens):
+        assert _ct(tokens) == "filesystem_write"
 
     # git push origin --force → git_history_rewrite (not git_write)
     def test_git_push_origin_force(self):
@@ -304,7 +323,8 @@ class TestGetPolicy:
         ("lang_exec", "ask"),
         ("process_signal", "ask"),
         ("container_destructive", "ask"),
-        ("sql_write", "ask"),
+        ("db_read", "allow"),
+        ("db_write", "ask"),
         ("obfuscated", "block"),
         ("unknown", "ask"),
     ])
@@ -866,7 +886,7 @@ class TestProfiles:
         assert "container_destructive" in action_types
         assert "lang_exec" in action_types
         assert "package_install" in action_types
-        assert "sql_write" in action_types
+        assert "db_write" in action_types
 
     def test_profile_minimal_subset(self):
         table = get_builtin_table("minimal")
@@ -876,14 +896,14 @@ class TestProfiles:
         assert "filesystem_read" in action_types
         assert "filesystem_write" in action_types
         assert "git_safe" in action_types
-        assert "network_outbound" in action_types
+        assert "network_diagnostic" in action_types
         assert "process_signal" in action_types
         # Minimal does NOT have tool-specific types
         assert "container_destructive" not in action_types
         assert "lang_exec" not in action_types
         assert "package_install" not in action_types
         assert "package_run" not in action_types
-        assert "sql_write" not in action_types
+        assert "db_write" not in action_types
 
     def test_profile_none_empty(self):
         table = get_builtin_table("none")
@@ -909,11 +929,15 @@ class TestProfiles:
         assert classify_tokens(["curl", "example.com"], builtin_table=table) == "network_outbound"
 
     def test_profile_none_everything_unknown(self):
-        """With none profile, all commands are unknown."""
+        """With none profile, table-only commands are unknown."""
         table = get_builtin_table("none")
         assert classify_tokens(["rm", "-rf", "/"], builtin_table=table) == "unknown"
         assert classify_tokens(["git", "status"], builtin_table=table) == "unknown"
-        assert classify_tokens(["curl", "x"], builtin_table=table) == "unknown"
+
+    def test_profile_none_curl_still_works(self):
+        """Special classifiers (curl) work regardless of profile."""
+        table = get_builtin_table("none")
+        assert classify_tokens(["curl", "x"], builtin_table=table) == "network_outbound"
 
     def test_profile_none_find_still_works(self):
         """Special classifiers (find) work regardless of profile."""
@@ -1101,6 +1125,7 @@ class TestBashBuiltins:
         ["type", "ls"],
         ["which", "python"],
         ["command", "-v", "git"],
+        ["command", "-V", "git"],
         ["help", "cd"],
         ["alias"],
         ["test", "-f", "file"],
@@ -1114,6 +1139,14 @@ class TestBashBuiltins:
     ])
     def test_builtin_is_read(self, cmd):
         assert _ct(cmd) == "filesystem_read"
+
+    def test_bare_command_is_unknown(self):
+        """Bare 'command' (no args) → unknown (not filesystem_read)."""
+        assert _ct(["command"]) == "unknown"
+
+    def test_command_psql_is_unknown(self):
+        """'command psql' → unknown at taxonomy level (unwrap is bash.py's job)."""
+        assert _ct(["command", "psql"]) == "unknown"
 
 
 # --- FD-018: system info + compute ---
@@ -1203,3 +1236,138 @@ class TestCoreutilsExpanded:
     ])
     def test_coreutils_is_read(self, cmd):
         assert _ct(cmd) == "filesystem_read"
+
+
+# --- FD-022: Network classifiers ---
+
+
+class TestFD022Classifiers:
+    """FD-022: curl, wget, httpie flag-dependent classification."""
+
+    # --- _classify_curl ---
+    def test_curl_bare_outbound(self):
+        assert _ct(["curl", "https://example.com"]) == "network_outbound"
+
+    def test_curl_X_POST(self):
+        assert _ct(["curl", "-X", "POST", "https://example.com"]) == "network_write"
+
+    def test_curl_XPOST_no_space(self):
+        assert _ct(["curl", "-XPOST", "https://example.com"]) == "network_write"
+
+    def test_curl_request_eq_POST(self):
+        assert _ct(["curl", "--request=POST", "https://example.com"]) == "network_write"
+
+    def test_curl_request_eq_post_lowercase(self):
+        assert _ct(["curl", "--request=post", "https://example.com"]) == "network_write"
+
+    def test_curl_d_flag(self):
+        assert _ct(["curl", "-d", "data", "https://example.com"]) == "network_write"
+
+    def test_curl_data_eq(self):
+        assert _ct(["curl", "--data=x", "https://example.com"]) == "network_write"
+
+    def test_curl_F_form(self):
+        assert _ct(["curl", "-F", "file=@f", "https://example.com"]) == "network_write"
+
+    def test_curl_form_long(self):
+        assert _ct(["curl", "--form", "file=@f", "https://example.com"]) == "network_write"
+
+    def test_curl_T_upload(self):
+        assert _ct(["curl", "-T", "file.txt", "https://example.com"]) == "network_write"
+
+    def test_curl_upload_file(self):
+        assert _ct(["curl", "--upload-file", "file.txt", "https://example.com"]) == "network_write"
+
+    def test_curl_json_flag(self):
+        assert _ct(["curl", "--json", '{"key":"val"}', "https://example.com"]) == "network_write"
+
+    def test_curl_combined_sXPOST(self):
+        assert _ct(["curl", "-sXPOST", "https://example.com"]) == "network_write"
+
+    def test_curl_contradictory_X_GET_d(self):
+        """Data flags take priority over method flags: -X GET -d data → write."""
+        assert _ct(["curl", "-X", "GET", "-d", "data", "https://example.com"]) == "network_write"
+
+    def test_curl_sXGET_outbound(self):
+        assert _ct(["curl", "-sXGET", "https://example.com"]) == "network_outbound"
+
+    # --- _classify_wget ---
+    def test_wget_bare_outbound(self):
+        assert _ct(["wget", "https://example.com"]) == "network_outbound"
+
+    def test_wget_post_data(self):
+        assert _ct(["wget", "--post-data", "x", "https://example.com"]) == "network_write"
+
+    def test_wget_post_data_eq(self):
+        assert _ct(["wget", "--post-data=x", "https://example.com"]) == "network_write"
+
+    def test_wget_post_file(self):
+        assert _ct(["wget", "--post-file", "data.txt", "https://example.com"]) == "network_write"
+
+    def test_wget_method_POST(self):
+        assert _ct(["wget", "--method", "POST", "https://example.com"]) == "network_write"
+
+    def test_wget_method_eq_post(self):
+        assert _ct(["wget", "--method=post", "https://example.com"]) == "network_write"
+
+    def test_wget_method_GET_post_data_contradictory(self):
+        """Data flags take priority: --method=GET --post-data=x → write."""
+        assert _ct(["wget", "--method=GET", "--post-data=x", "https://example.com"]) == "network_write"
+
+    # --- _classify_httpie ---
+    def test_httpie_bare_outbound(self):
+        assert _ct(["http", "example.com"]) == "network_outbound"
+
+    def test_httpie_explicit_GET(self):
+        assert _ct(["http", "GET", "example.com"]) == "network_outbound"
+
+    def test_httpie_POST(self):
+        assert _ct(["http", "POST", "example.com"]) == "network_write"
+
+    def test_httpie_PUT(self):
+        assert _ct(["http", "PUT", "example.com"]) == "network_write"
+
+    def test_httpie_DELETE(self):
+        assert _ct(["http", "DELETE", "example.com"]) == "network_write"
+
+    def test_httpie_PATCH(self):
+        assert _ct(["http", "PATCH", "example.com"]) == "network_write"
+
+    def test_httpie_form_flag(self):
+        assert _ct(["http", "--form", "example.com"]) == "network_write"
+
+    def test_httpie_f_flag(self):
+        assert _ct(["http", "-f", "example.com"]) == "network_write"
+
+    def test_httpie_data_items(self):
+        assert _ct(["http", "example.com", "key=value"]) == "network_write"
+
+    def test_httpie_not_httpie_returns_none(self):
+        """Non-httpie commands should not be caught."""
+        assert _ct(["curl", "example.com"]) != "network_write"  # curl has its own classifier
+
+    # --- Policy defaults ---
+    def test_network_write_policy(self):
+        assert get_policy("network_write") == "context"
+
+    def test_network_diagnostic_policy(self):
+        assert get_policy("network_diagnostic") == "allow"
+
+    # --- Table entries ---
+    def test_ping_diagnostic(self):
+        assert _ct(["ping", "8.8.8.8"]) == "network_diagnostic"
+
+    def test_netstat_filesystem_read(self):
+        assert _ct(["netstat", "-an"]) == "filesystem_read"
+
+    def test_netcat_outbound(self):
+        assert _ct(["netcat", "example.com", "80"]) == "network_outbound"
+
+    def test_ss_filesystem_read(self):
+        assert _ct(["ss", "-tulpn"]) == "filesystem_read"
+
+    def test_lsof_filesystem_read(self):
+        assert _ct(["lsof", "-i"]) == "filesystem_read"
+
+    def test_openssl_s_client_outbound(self):
+        assert _ct(["openssl", "s_client"]) == "network_outbound"

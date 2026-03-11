@@ -227,6 +227,24 @@ def _obfuscated_result(tokens: list[str], reason: str, user_actions: dict[str, s
     return sr
 
 
+def _strip_command_builtin(tokens: list[str]) -> list[str] | None:
+    """Strip 'command' builtin wrapper, returning inner tokens.
+
+    Returns None for introspection forms (-v/-V) or bare 'command'."""
+    i = 1
+    while i < len(tokens) and tokens[i].startswith("-"):
+        flag = tokens[i]
+        if "v" in flag or "V" in flag:
+            return None  # Introspection
+        if flag == "-p":
+            i += 1
+            continue
+        break
+    if i < len(tokens):
+        return tokens[i:]
+    return None
+
+
 def _unwrap_shell(
     stage: Stage,
     depth: int,
@@ -241,6 +259,16 @@ def _unwrap_shell(
 
     if depth >= _MAX_UNWRAP_DEPTH:
         return _obfuscated_result(tokens, "excessive shell nesting", user_actions)
+
+    # command builtin unwrap
+    if tokens and tokens[0] == "command":
+        inner = _strip_command_builtin(tokens)
+        if inner:
+            inner_stage = Stage(tokens=inner, operator=stage.operator)
+            return _classify_stage(inner_stage, depth + 1, global_table=global_table,
+                                   builtin_table=builtin_table, project_table=project_table,
+                                   user_actions=user_actions)
+        return None  # Introspection or bare — fall through to classify
 
     is_wrapper, inner = taxonomy.is_shell_wrapper(tokens)
     if not is_wrapper or inner is None:
@@ -294,8 +322,11 @@ def _check_redirect(target: str) -> tuple[str, str]:
 
 def _resolve_context(action_type: str, tokens: list[str]) -> tuple[str, str]:
     """Resolve 'context' policy by checking filesystem or network context."""
-    if action_type == taxonomy.NETWORK_OUTBOUND:
-        return context.resolve_network_context(tokens)
+    if action_type in (taxonomy.NETWORK_OUTBOUND, taxonomy.NETWORK_WRITE):
+        return context.resolve_network_context(tokens, action_type)
+
+    if action_type == taxonomy.DB_WRITE:
+        return context.resolve_database_context(tokens, None)
 
     if action_type in (taxonomy.FILESYSTEM_READ, taxonomy.FILESYSTEM_WRITE,
                        taxonomy.FILESYSTEM_DELETE):
@@ -367,11 +398,11 @@ def _check_composition(stage_results: list[StageResult], stages: list[Stage]) ->
         right = stage_results[i + 1]
 
         # sensitive_read | network → block (exfiltration)
-        if _is_sensitive_read(left) and right.action_type == taxonomy.NETWORK_OUTBOUND:
+        if _is_sensitive_read(left) and right.action_type in (taxonomy.NETWORK_OUTBOUND, taxonomy.NETWORK_WRITE):
             return taxonomy.BLOCK, f"data exfiltration: {right.tokens[0]} receives sensitive input", "sensitive_read | network"
 
         # network | exec → block (remote code execution)
-        if left.action_type == taxonomy.NETWORK_OUTBOUND and _is_exec_sink_stage(right):
+        if left.action_type in (taxonomy.NETWORK_OUTBOUND, taxonomy.NETWORK_WRITE) and _is_exec_sink_stage(right):
             return taxonomy.BLOCK, f"remote code execution: {right.tokens[0]} receives network input", "network | exec"
 
         # decode | exec → block (obfuscation)

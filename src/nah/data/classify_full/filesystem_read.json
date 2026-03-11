@@ -22,7 +22,8 @@
   "pwd",
   "type",
   "which",
-  "command",
+  "command -v",
+  "command -V",
   "help",
   "alias",
   "test",
@@ -97,5 +98,8 @@
   "gh alias list",
   "gh extension list",
   "gh completion",
-  "gh attestation trusted-root"
+  "gh attestation trusted-root",
+  "netstat",
+  "ss",
+  "lsof"
 ]

@@ -1,14 +1,14 @@
 [
-  "curl",
-  "wget",
   "ssh",
   "scp",
   "rsync",
   "nc",
   "ncat",
+  "netcat",
   "telnet",
   "ftp",
   "sftp",
   "git daemon",
-  "git http-backend"
+  "git http-backend",
+  "openssl s_client"
 ]

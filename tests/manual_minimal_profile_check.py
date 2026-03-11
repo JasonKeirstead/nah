@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory() as tmp:
         ("python -c 'print(1)'", "lang_exec in full, unknown in minimal"),
         ("npm install react", "package_install in full, unknown in minimal"),
         ("cargo test", "package_run in full, unknown in minimal"),
-        ("psql -c 'SELECT 1'", "sql_write in full, unknown in minimal"),
+        ("psql -c 'SELECT 1'", "db_write in full, unknown in minimal"),
         ("rm file.txt", "filesystem_delete in both"),
         ("curl example.com", "network_outbound in both"),
         ("git status", "git_safe in both"),

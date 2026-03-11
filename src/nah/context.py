@@ -52,8 +52,8 @@ def resolve_filesystem_context(target_path: str) -> tuple[str, str]:
     return taxonomy.ASK, f"outside project: {paths.friendly_path(resolved)}"
 
 
-def resolve_network_context(tokens: list[str]) -> tuple[str, str]:
-    """Resolve network context for outbound commands.
+def resolve_network_context(tokens: list[str], action_type: str = taxonomy.NETWORK_OUTBOUND) -> tuple[str, str]:
+    """Resolve network context for outbound/write commands.
 
     Returns (decision, reason).
     """
@@ -64,11 +64,15 @@ def resolve_network_context(tokens: list[str]) -> tuple[str, str]:
     # Strip port if present
     host_no_port = host.split(":")[0] if ":" in host else host
 
-    # Localhost
+    # Localhost — allowed for both reads and writes
     if host_no_port in _LOCALHOST:
         return taxonomy.ALLOW, f"localhost: {host}"
 
-    # Known registries
+    # Network writes always ask (known hosts only trusted for reads)
+    if action_type == taxonomy.NETWORK_WRITE:
+        return taxonomy.ASK, f"network_write → ask (host: {host_no_port})"
+
+    # Known registries (reads only)
     if host_no_port in _KNOWN_HOSTS:
         return taxonomy.ALLOW, f"known host: {host_no_port}"
 
@@ -94,6 +98,8 @@ def extract_host(tokens: list[str]) -> str | None:
 
     if cmd in ("curl", "wget"):
         return _extract_url_host(args)
+    if cmd in ("http", "https", "xh", "xhs"):
+        return _extract_httpie_host(args)
     if cmd in ("ssh", "scp", "sftp"):
         return _extract_positional_host(args, {"-p", "-i", "-l", "-o", "-F", "-J", "-P"})
     if cmd in ("nc", "ncat", "telnet"):
@@ -101,6 +107,34 @@ def extract_host(tokens: list[str]) -> str | None:
 
     # Fallback: try URL extraction
     return _extract_url_host(args)
+
+
+_HTTPIE_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+
+
+def _extract_httpie_host(args: list[str]) -> str | None:
+    """Extract host from httpie args. Skips flags, METHOD tokens, data items."""
+    for arg in args:
+        if arg.startswith("-"):
+            continue
+        # Skip method tokens
+        if arg.upper() in _HTTPIE_METHODS:
+            continue
+        # Skip data items (key=value, key:=value, key@file)
+        if "=" in arg or ":=" in arg or ("@" in arg and "://" not in arg):
+            continue
+        # This is the URL/host
+        if "://" in arg:
+            parsed = urllib.parse.urlparse(arg)
+            if parsed.hostname:
+                return parsed.hostname
+        # Bare hostname
+        if "." in arg or ":" in arg:
+            part = arg.split("/")[0]
+            if part:
+                return part.split(":")[0] if ":" in part else part
+        return arg
+    return None
 
 
 def _extract_url_host(args: list[str]) -> str | None:
@@ -120,6 +154,159 @@ def _extract_url_host(args: list[str]) -> str | None:
             if part and not part.startswith("-"):
                 return part.split(":")[0] if ":" in part else part
     return None
+
+
+def resolve_database_context(tokens: list[str], tool_input: dict | None) -> tuple[str, str]:
+    """Resolve database context for db_write commands.
+
+    Extracts database target from CLI flags, checks against configured db_targets.
+    Returns (decision, reason).
+    """
+    target = _extract_db_target(tokens, tool_input)
+    if target is None:
+        return taxonomy.ASK, "unknown database target"
+
+    database, schema = target
+    # Normalize to uppercase for comparison
+    database = database.upper() if database else None
+    schema = schema.upper() if schema else None
+
+    if not database:
+        return taxonomy.ASK, "unknown database target"
+
+    from nah.config import get_config
+    cfg = get_config()
+
+    if not cfg.db_targets:
+        return taxonomy.ASK, "no db_targets configured"
+
+    if _matches_db_targets(database, schema, cfg.db_targets):
+        label = f"{database}.{schema}" if schema else database
+        return taxonomy.ALLOW, f"allowed target: {label}"
+
+    label = f"{database}.{schema}" if schema else database
+    return taxonomy.ASK, f"unrecognized target: {label}"
+
+
+def _extract_db_target(tokens: list[str] | None, tool_input: dict | None) -> tuple[str, str | None] | None:
+    """Extract database target from CLI flags or tool input.
+
+    Returns (database, schema) or None if not determinable.
+    """
+    # Phase 2 MCP path: tool_input has database/schema keys
+    if tool_input:
+        if "database" in tool_input or "schema" in tool_input:
+            db = tool_input.get("database")
+            sc = tool_input.get("schema")
+            if db:
+                return (db, sc)
+
+    if not tokens:
+        return None
+
+    cmd = tokens[0]
+
+    if cmd == "psql":
+        return _extract_psql_target(tokens)
+    if cmd == "snowsql":
+        return _extract_snowsql_target(tokens)
+    if cmd == "snow" and len(tokens) >= 2 and tokens[1] == "sql":
+        return _extract_snow_sql_target(tokens)
+
+    return None
+
+
+def _extract_flag_value(tokens: list[str], short: str, long: str, start: int = 1) -> str | None:
+    """Extract first occurrence of a flag value from tokens.
+
+    Handles: -d VALUE, -dVALUE (glued), --dbname VALUE, --dbname=VALUE.
+    """
+    i = start
+    while i < len(tokens):
+        tok = tokens[i]
+        # Long form: --flag=value or --flag value
+        if tok == long:
+            if i + 1 < len(tokens):
+                return tokens[i + 1]
+            return None
+        if tok.startswith(long + "="):
+            return tok[len(long) + 1:]
+        # Short form: -d value or -dvalue (glued)
+        if short:
+            if tok == short:
+                if i + 1 < len(tokens):
+                    return tokens[i + 1]
+                return None
+            if tok.startswith(short) and len(tok) > len(short):
+                return tok[len(short):]
+        i += 1
+    return None
+
+
+def _extract_psql_target(tokens: list[str]) -> tuple[str, str | None] | None:
+    """Extract database from psql flags or connection string."""
+    # CLI flag takes priority
+    db = _extract_flag_value(tokens, "-d", "--dbname")
+    if db:
+        return (db, None)
+
+    # Check for connection string URL
+    for tok in tokens[1:]:
+        if tok.startswith("-"):
+            continue
+        if tok.startswith("postgresql://") or tok.startswith("postgres://"):
+            parsed = urllib.parse.urlparse(tok)
+            # Only extract from path, not query params (fail-safe)
+            if parsed.path and len(parsed.path) > 1:
+                return (parsed.path.lstrip("/"), None)
+
+    return None
+
+
+def _extract_snowsql_target(tokens: list[str]) -> tuple[str, str | None] | None:
+    """Extract database and schema from snowsql flags."""
+    db = _extract_flag_value(tokens, "-d", "--dbname")
+    if not db:
+        return None
+    schema = _extract_flag_value(tokens, "-s", "--schemaname")
+    return (db, schema)
+
+
+def _extract_snow_sql_target(tokens: list[str]) -> tuple[str, str | None] | None:
+    """Extract database and schema from snow sql flags."""
+    # snow sql --database X --schema Y (start at 2 to skip "snow sql")
+    db = _extract_flag_value(tokens, "", "--database", start=2)
+    if not db:
+        return None
+    schema = _extract_flag_value(tokens, "", "--schema", start=2)
+    return (db, schema)
+
+
+def _matches_db_targets(database: str, schema: str | None, db_targets: list[dict]) -> bool:
+    """Check if database/schema matches any configured db_targets entry.
+
+    Each entry has 'database' (required) and optional 'schema'.
+    Wildcard '*' matches anything.
+    """
+    for entry in db_targets:
+        entry_db = entry.get("database")
+        if not entry_db:
+            continue
+        entry_db = entry_db.upper() if isinstance(entry_db, str) else entry_db
+
+        # Database must match
+        if entry_db != "*" and entry_db != database:
+            continue
+
+        # Schema: absent/None/"*" matches anything, otherwise must match
+        entry_schema = entry.get("schema")
+        if entry_schema is None or (isinstance(entry_schema, str) and entry_schema == "*"):
+            return True
+        entry_schema = entry_schema.upper() if isinstance(entry_schema, str) else entry_schema
+        if schema is None or entry_schema == schema:
+            return True
+
+    return False
 
 
 def _extract_positional_host(args: list[str], valued_flags: set[str]) -> str | None:

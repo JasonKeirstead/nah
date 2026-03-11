@@ -27,7 +27,7 @@ class TestClassifyUnknownTool:
 
     def test_global_classify_ask(self):
         config._cached_config = NahConfig(
-            classify_global={"sql_write": ["DbTool"]},
+            classify_global={"db_write": ["DbTool"]},
         )
         d = _classify_unknown_tool("DbTool")
         assert d["decision"] == "ask"

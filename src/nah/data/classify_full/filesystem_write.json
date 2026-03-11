@@ -29,5 +29,8 @@
   "gh auth logout",
   "gh auth refresh",
   "gh auth setup-git",
-  "gh auth switch"
+  "gh auth switch",
+  "pg_dump",
+  "pg_dumpall",
+  "mysqldump"
 ]
