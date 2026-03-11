@@ -548,16 +548,21 @@ def cmd_status(args: argparse.Namespace) -> None:
             for path, roots in scope_rules["allow_paths"].items():
                 print(f"  allow-path: {path} → {', '.join(roots)}")
         if "classify" in scope_rules:
-            from nah.taxonomy import (build_user_table, get_builtin_table,
-                                      find_table_shadows, find_flag_classifier_shadows)
-            from nah.config import get_config
-            cfg = get_config()
-            user_classify = scope_rules["classify"]
-            user_table = build_user_table(user_classify)
-            builtin_table = get_builtin_table(cfg.profile) if cfg.profile != "none" else []
-            table_shadows = find_table_shadows(user_table, builtin_table)
-            flag_shadows = set(find_flag_classifier_shadows(user_table))
-            for action_type, prefixes in user_classify.items():
+            # Shadow warnings only for global scope — project entries are
+            # Phase 3 (checked after builtin), so they can't shadow.
+            table_shadows: dict = {}
+            flag_shadows: set = set()
+            if scope == "global":
+                from nah.taxonomy import (build_user_table, get_builtin_table,
+                                          find_table_shadows, find_flag_classifier_shadows)
+                from nah.config import get_config
+                cfg = get_config()
+                user_classify = scope_rules["classify"]
+                user_table = build_user_table(user_classify)
+                builtin_table = get_builtin_table(cfg.profile) if cfg.profile != "none" else []
+                table_shadows = find_table_shadows(user_table, builtin_table)
+                flag_shadows = set(find_flag_classifier_shadows(user_table))
+            for action_type, prefixes in scope_rules["classify"].items():
                 for prefix in prefixes:
                     prefix_tuple = tuple(prefix.split())
                     annotations = []
@@ -627,17 +632,16 @@ def cmd_types(args: argparse.Namespace) -> None:
     descriptions = load_type_descriptions()
     cfg = get_config()
 
-    # Gather shadow data from user classify entries
+    # Gather shadow data from global classify entries only — project entries
+    # are Phase 3 (checked after builtin), so they can't shadow.
     override_notes: dict[str, list[str]] = {}
     try:
         rules = list_rules()
     except RuntimeError:
         rules = {}
-    builtin_table = get_builtin_table(cfg.profile) if cfg.profile != "none" else []
-    for scope in ("global", "project"):
-        user_classify = rules.get(scope, {}).get("classify", {})
-        if not user_classify:
-            continue
+    user_classify = rules.get("global", {}).get("classify", {})
+    if user_classify:
+        builtin_table = get_builtin_table(cfg.profile) if cfg.profile != "none" else []
         user_table = build_user_table(user_classify)
         table_shadows = find_table_shadows(user_table, builtin_table)
         flag_shadows = set(find_flag_classifier_shadows(user_table))
