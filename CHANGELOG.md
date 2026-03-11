@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `_classify_git()` flag-dependent classifier for 12 dual-behavior git commands (tag, branch, config, reset, push, add, rm, clean, reflog, checkout, switch, restore), ~100 new git entries covering full porcelain + plumbing, complete gh CLI classification (~130 entries across 6 action types) (FD-017)
 - CLI now accepts custom action types with confirmation prompt — typos still caught via fuzzy matching, intentional custom types confirmed interactively, non-interactive input defaults to deny (FD-047)
 - CLI warns before overwriting config files that contain YAML comments, since `yaml.dump` strips them (FD-047)
+- MCP tool support — `mcp__.*` regex matcher guards all MCP tool calls, project classify skipped for supply-chain safety, MCP-specific log redaction (FD-024)
 
 ### Fixed
 
